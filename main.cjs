@@ -1,5 +1,5 @@
 // Ember Island — Electron shell. UI lives in ui/; system data comes from bridge.ps1; Claude Code talks to the hook server.
-const { app, BrowserWindow, ipcMain, Menu, screen, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, screen, protocol, net, shell } = require('electron');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
@@ -149,7 +149,10 @@ else app.whenReady().then(() => {
     if (!file.startsWith(UI)) return new Response('', { status: 403 }); // no escaping the ui folder
     return net.fetch(pathToFileURL(file).toString());
   });
-  app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: [__dirname] }); // start with Windows
+  // Start with Windows via a Startup-folder shortcut: Windows skipped the bare registry entry Electron writes for an unpackaged app
+  app.setLoginItemSettings({ openAtLogin: false, path: process.execPath, args: [__dirname] }); // remove the old entry
+  shell.writeShortcutLink(path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Ember Island.lnk'),
+    { target: process.execPath, args: `"${__dirname}"`, cwd: __dirname, description: 'Ember Island' });
   createWindow();
   watchBridge();
   serveHooks(token());
