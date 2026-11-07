@@ -1,5 +1,5 @@
 // Ember Island — Electron shell. UI lives in ui/; system data comes from bridge.ps1; Claude Code talks to the hook server.
-const { app, BrowserWindow, ipcMain, Menu, screen, protocol, net, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, screen, protocol, net, shell, powerMonitor } = require('electron');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
@@ -37,6 +37,7 @@ function token() {
 }
 
 // Media, foreground app and notifications arrive as JSON lines
+let lastApps = [], allIcons = {};
 function watchBridge() {
   const p = ps(['-Parent', String(process.pid)]);
   let buf = '';
@@ -47,7 +48,11 @@ function watchBridge() {
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i).replace(/^﻿/, '').trim();
       buf = buf.slice(i + 1);
-      if (line) try { send(JSON.parse(line)); } catch { /* skip partial line */ }
+      if (!line) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch { continue; } // skip partial line
+      if (ev.type === 'apps') { lastApps = ev.apps; Object.assign(allIcons, ev.icons); } // the bridge sends each icon once; keep them for a rebuilt window
+      send(ev);
     }
   });
   p.on('exit', () => { if (!quitting) setTimeout(watchBridge, 3000); });
@@ -73,9 +78,10 @@ function handleHook(v) {
         resolve(behavior ? JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: behavior } }) : '');
       };
       const timer = setTimeout(() => answer(null), APPROVAL_WAIT);
-      pending.set(id, { answer, session });
+      const ev = { type: 'permission', id, session, cwd, tool: v.tool_name, input: v.tool_input };
+      pending.set(id, { answer, session, ev }); // ev is re-sent if the window is rebuilt while waiting
       state('working');
-      send({ type: 'permission', id, session, cwd, tool: v.tool_name, input: v.tool_input });
+      send(ev);
     });
     default: return Promise.resolve('');
   }
@@ -108,8 +114,24 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setIgnoreMouseEvents(true, { forward: true });
   win.once('ready-to-show', () => win.showInactive());
+  win.webContents.on('did-finish-load', () => {
+    send({ type: 'apps', apps: lastApps, icons: allIcons });
+    for (const p of pending.values()) send(p.ev);
+  });
   win.loadURL('app://ui/index.html');
 }
+
+// After sleep, unlock or a graphics reset, Windows can leave a transparent window as an empty box: build a fresh one
+let reviveTimer, lastAlive = Date.now();
+function revive() {
+  if (quitting) return;
+  lastAlive = Date.now(); // give the new window time to load before the watchdog judges it
+  clearTimeout(reviveTimer);
+  reviveTimer = setTimeout(() => { const old = win; createWindow(); old?.destroy(); }, 2000); // let the GPU settle first
+}
+// Watchdog: the page checks in every 5 s; Electron didn't report a killed page process here, so don't rely on crash events
+ipcMain.on('alive', () => { lastAlive = Date.now(); });
+setInterval(() => { if (Date.now() - lastAlive > 20_000) revive(); }, 5_000);
 
 function showMenu() {
   const cfg = readConfig();
@@ -156,5 +178,8 @@ else app.whenReady().then(() => {
   createWindow();
   watchBridge();
   serveHooks(token());
+  powerMonitor.on('resume', revive);
+  powerMonitor.on('unlock-screen', revive);
+  app.on('child-process-gone', (_, d) => { if (d.type === 'GPU') revive(); });
 });
 app.on('before-quit', () => { quitting = true; for (const p of pending.values()) p.answer(null); });

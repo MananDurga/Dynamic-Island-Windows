@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+setInterval(() => ipcRenderer.send('alive'), 5_000); // heartbeat for the main process watchdog
+
 contextBridge.exposeInMainWorld('island', {
   onEvent: f => ipcRenderer.on('island', (_, ev) => f(ev)),
   getConfig: () => ipcRenderer.invoke('get_config'),
