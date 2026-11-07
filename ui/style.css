@@ -1,0 +1,122 @@
+@property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+:root {
+  --glass: rgba(10, 8, 8, 0.80);
+  --text: #F5F1EE; --text-2: #A39A94; --text-3: #6E6560;
+  --tile: rgba(255, 255, 255, 0.05); --tile-line: rgba(255, 255, 255, 0.06);
+  --rim: #6b2d16; --rim-alpha: .35; --pulse: 6s;
+  --spring: cubic-bezier(.2, .9, .3, 1.25);
+}
+#pill[data-state="claude"]   { --rim: #E8775A; --rim-alpha: .8; --pulse: 2.4s; }
+#pill[data-state="approval"] { --rim: #FF8A65; --rim-alpha: 1;  --pulse: 1.2s; }
+#pill[data-state="music"]    { --rim: #5EEAD4; --rim-alpha: .7; --pulse: 4s; }
+#pill[data-state="notif"]    { --rim: #60A5FA; --rim-alpha: .9; --pulse: 3s; }
+
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none;
+  font: 500 13px/1.3 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: var(--text);
+  -webkit-font-smoothing: antialiased; }
+
+#island { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); --halo-colors: #6b2d16, #6b2d16; }
+/* Ambient light: a blurred glow in the colors of the app in front, spilling around the pill onto the desktop */
+#halo { position: absolute; inset: 0 8px; border-radius: 40px; pointer-events: none;
+  background: conic-gradient(from var(--spin), var(--halo-colors));
+  filter: blur(16px); opacity: .55; animation: spin 9s linear infinite, glow 4s ease-in-out infinite; }
+@keyframes glow { 50% { opacity: .38; } }
+#pill { position: relative; z-index: 1;
+  width: 240px; height: 36px; border-radius: 18px; background: var(--glass); overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 30px rgba(0,0,0,.45),
+              0 0 18px -6px color-mix(in srgb, var(--rim) calc(var(--rim-alpha) * 100%), transparent);
+  transition: width .38s var(--spring), height .38s var(--spring), border-radius .38s var(--spring), box-shadow .4s; }
+/* The living rim: a light that travels around the edge, colored by state */
+#pill::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--spin), var(--rim), transparent 30%, var(--rim) 55%, transparent 80%, var(--rim));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: var(--rim-alpha); animation: spin calc(var(--pulse) * 2) linear infinite, breathe var(--pulse) ease-in-out infinite; }
+@keyframes spin { to { --spin: 360deg; } }
+@keyframes breathe { 50% { opacity: calc(var(--rim-alpha) * .45); } }
+
+#pill.open   { width: 540px; height: 238px; border-radius: 32px; }
+#pill.card   { width: 520px; height: 196px; border-radius: 30px; }
+#pill.toast  { width: 440px; height: 92px;  border-radius: 28px; }
+
+#content { position: absolute; inset: 0; animation: in .22s ease-out .12s both; }
+@keyframes in { from { opacity: 0; transform: translateY(-6px); } }
+
+.compact { display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 36px; padding: 0 16px; white-space: nowrap;
+  width: max-content; min-width: 180px; max-width: 480px; box-sizing: border-box; } /* the pill takes this width */
+
+/* Open apps: real icons, each with a soft glow in its own color; the app in front sits a little larger and brighter */
+.apps { display: inline-flex; align-items: center; gap: 9px; vertical-align: middle; }
+.ai { position: relative; width: 18px; height: 18px; display: inline-grid; place-items: center; flex-shrink: 0; transition: transform .2s var(--spring); }
+.ai::before { content: ''; position: absolute; inset: -2px; border-radius: 50%; background: var(--c); filter: blur(6px); opacity: .45; }
+.ai.fg { transform: scale(1.15); }
+.ai.fg::before { opacity: .9; inset: -4px; }
+.ai img, .mono, .logo { position: relative; width: 18px; height: 18px; }
+.logo { border-radius: 5px; display: grid; place-items: center; box-sizing: border-box; padding: 2.5px; }
+.logo img { width: 100%; height: 100%; object-fit: contain; }
+.mono { border-radius: 5px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.more { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.chips { display: flex; gap: 6px; margin-top: 7px; overflow: hidden; }
+.chip { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; max-width: 130px; padding: 4px 10px 4px 6px; border-radius: 12px; font-size: 12px;
+  background: rgba(255,255,255,.04); border: 1px solid var(--tile-line); transition: transform .15s, border-color .2s; }
+.chip:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--c) 55%, transparent); }
+.chip.fg { border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.compact > span { flex-shrink: 0; }
+/* only long text (song title, Claude project) shrinks; clock, weather, battery always stay whole */
+.compact > span:has(.bars, .spark) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.num { font-variant-numeric: tabular-nums; }
+
+.grid { position: absolute; left: 14px; right: 14px; top: 14px; bottom: 14px;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: min-content; gap: 6px; align-content: start; overflow: hidden; }
+.tile { background: var(--tile); border: 1px solid var(--tile-line); border-radius: 16px; padding: 6px 11px; min-width: 0; }
+.tile.wide { grid-column: 1 / -1; }
+.big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.meta { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.dim { color: var(--text-2); font-size: 12px; }
+.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tile.row { display: flex; align-items: center; gap: 12px; }
+.grow { flex: 1; min-width: 0; }
+.ctl { display: flex; gap: 4px; }
+.ctl button, .btn { font: inherit; color: var(--text); background: none; border: 0; cursor: pointer; padding: 0; }
+.ctl button { width: 30px; height: 30px; border-radius: 15px; display: grid; place-items: center; opacity: .85; transition: background .15s; }
+.ctl button:hover { opacity: 1; background: rgba(255,255,255,.08); color: #5EEAD4; }
+.bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 11px; margin-right: 7px; vertical-align: -1px; }
+.bars i { width: 2.5px; border-radius: 2px; background: #5EEAD4; animation: eq .9s infinite ease-in-out; }
+.bars i:nth-child(2) { animation-delay: .2s } .bars i:nth-child(3) { animation-delay: .4s }
+.paused .bars i { animation: none; height: 3px; }
+@keyframes eq { 0%, 100% { height: 3px } 50% { height: 11px } }
+
+.spark { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #E8775A; margin-right: 8px;
+  box-shadow: 0 0 10px #E8775A; animation: breathe 1.4s ease-in-out infinite; --rim-alpha: 1; }
+
+/* Approval + notification cards */
+.cardbody { position: absolute; inset: 0; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px; }
+.head { display: flex; align-items: center; gap: 10px; }
+.head b { font-size: 14px; font-weight: 600; }
+.head .meta { margin-left: auto; }
+.code { font: 12px/1.5 "Cascadia Code", Consolas, monospace; background: rgba(0,0,0,.35); border: 1px solid var(--tile-line);
+  border-radius: 10px; padding: 8px 11px; color: #f3dfd6; white-space: pre-wrap; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.foot { display: flex; align-items: center; gap: 10px; margin-top: auto; }
+.foot .meta { margin-right: auto; }
+.btn { height: 32px; padding: 0 18px; border-radius: 16px; font-weight: 600; transition: transform .12s, background .15s; }
+.btn:active { transform: scale(.96); }
+.btn.deny { border: 1px solid rgba(255,255,255,.18); } .btn.deny:hover { background: rgba(255,255,255,.06); }
+.btn.allow { background: var(--text); color: #140c09; } .btn.allow:hover { background: #fff; }
+.btn:focus-visible { outline: 2px solid #FF8A65; outline-offset: 2px; }
+.queue { color: var(--text-3); font-size: 11px; }
+.toastbody { position: absolute; inset: 0; padding: 14px 20px; display: grid; grid-template-columns: 40px 1fr auto; gap: 2px 12px; align-items: center; }
+.appicon { grid-row: 1 / 4; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: rgba(96,165,250,.16); color: #93c5fd; font-weight: 700; font-size: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #pill { transition: none; } #pill::before, #halo, .bars i, .spark { animation: none; } #content { animation: none; }
+}
+
+/* Weather: one tile, split when comparing two places */
+.tile.wx { display: flex; align-items: stretch; }
+.wxc { flex: 1; min-width: 0; }
+.wxsep { width: 1px; margin: 2px 10px; background: var(--tile-line); }
+.wxl { margin-left: 6px; vertical-align: 3px; }

@@ -1,0 +1,19 @@
+{
+    "name": "dynamic-island-windows",
+    "version": "0.1.0",
+    "description": "A dynamic island for Windows 11: open apps with ambient brand glow, media, weather, notifications and Claude Code approvals",
+    "private": true,
+    "main": "main.cjs",
+    "scripts": {
+        "start": "electron .",
+        "logos": "node tools/build-logos.mjs",
+        "hooks": "node tools/install-hooks.mjs",
+        "check": "node tools/check-brands.mjs"
+    },
+    "type": "module",
+    "devDependencies": {
+        "@iconify-json/logos": "^1.2.19",
+        "electron": "^33.4.11",
+        "simple-icons": "^16.36.0"
+    }
+}

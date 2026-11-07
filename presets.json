@@ -1,0 +1,64 @@
+{
+  "active": "default",
+  "weather": [
+    {
+      "label": "HERE",
+      "auto": true
+    }
+  ],
+  "presets": {
+    "default": {
+      "compact": [
+        "apps",
+        "media",
+        "clock"
+      ],
+      "expanded": [
+        "clock",
+        "weather",
+        "battery",
+        "media",
+        "apps"
+      ]
+    },
+    "minimal": {
+      "compact": [
+        "clock"
+      ],
+      "expanded": [
+        "clock",
+        "weather"
+      ]
+    },
+    "music": {
+      "compact": [
+        "media"
+      ],
+      "expanded": [
+        "media",
+        "clock"
+      ]
+    },
+    "focus": {
+      "compact": [
+        "app"
+      ],
+      "expanded": [
+        "app",
+        "clock",
+        "battery"
+      ]
+    },
+    "apps": {
+      "compact": [
+        "apps",
+        "clock"
+      ],
+      "expanded": [
+        "apps",
+        "clock",
+        "battery"
+      ]
+    }
+  }
+}
