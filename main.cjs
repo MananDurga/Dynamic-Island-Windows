@@ -99,7 +99,8 @@ function serveHooks(tok) {
 function createWindow() {
   const wa = screen.getPrimaryDisplay().workArea;
   win = new BrowserWindow({
-    width: W, height: H, x: wa.x + Math.round((wa.width - W) / 2), y: wa.y,
+    // 1.5% down from the top edge, so the browser's tab strip above it stays easy to click
+    width: W, height: H, x: wa.x + Math.round((wa.width - W) / 2), y: wa.y + Math.round(wa.height * 0.015),
     frame: false, transparent: true, resizable: false, skipTaskbar: true, hasShadow: false,
     alwaysOnTop: true, focusable: false, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), backgroundThrottling: false },
