@@ -135,8 +135,99 @@ function Read-Apps {
   @{ type = 'apps'; apps = @($apps); icons = $newIcons }
 }
 
+# --- Connected devices: external USB devices (not built into the laptop) and connected Bluetooth devices ---
+$null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType = WindowsRuntime]
+$null = [Windows.Devices.Bluetooth.BluetoothDevice, Windows.Devices.Bluetooth, ContentType = WindowsRuntime]
+$null = [Windows.Devices.Bluetooth.BluetoothLEDevice, Windows.Devices.Bluetooth, ContentType = WindowsRuntime]
+$devColl = [Windows.Devices.Enumeration.DeviceInformationCollection]
+$btSel = [Windows.Devices.Bluetooth.BluetoothDevice]::GetDeviceSelectorFromConnectionStatus('Connected')
+$leSel = [Windows.Devices.Bluetooth.BluetoothLEDevice]::GetDeviceSelectorFromConnectionStatus('Connected')
+$MACHINE = '{00000000-0000-0000-ffff-ffffffffffff}' # container of everything built into the laptop
+$devInfo = @{}   # instance id -> @{ container; name } (doesn't change while plugged in)
+$btKind = @{}    # bluetooth id -> kind
+$lastDevices = $null
+$RANK = @{ phone = 1; headphones = 2; speaker = 3; controller = 4; mouse = 5; keyboard = 6; storage = 7; usb = 8; bluetooth = 9 }
+
+function Kind-FromBluetooth($id, [bool]$le) {
+  if ($btKind.ContainsKey($id)) { return $btKind[$id] }
+  $k = 'bluetooth'
+  try {
+    if ($le) {
+      $d = Await ([Windows.Devices.Bluetooth.BluetoothLEDevice]::FromIdAsync($id)) ([Windows.Devices.Bluetooth.BluetoothLEDevice])
+      if ($d.Appearance.Category -eq 15) { $k = @{ 1 = 'keyboard'; 2 = 'mouse'; 3 = 'controller'; 4 = 'controller' }[[int]$d.Appearance.SubCategory]; if (-not $k) { $k = 'bluetooth' } }
+    } else {
+      $d = Await ([Windows.Devices.Bluetooth.BluetoothDevice]::FromIdAsync($id)) ([Windows.Devices.Bluetooth.BluetoothDevice])
+      # Minor class names overlap across device types (audio headsets read as "ToyRobot"), so use the raw numbers
+      $major = "$($d.ClassOfDevice.MajorClass)"; $minor = [int]$d.ClassOfDevice.MinorClass
+      if ($major -eq 'Phone') { $k = 'phone' }
+      elseif ($major -eq 'AudioVideo') { $k = if ($minor -in 5, 7, 8, 10) { 'speaker' } else { 'headphones' } } # 1 headset, 2 hands-free, 6 headphones
+      elseif ($major -eq 'Peripheral') {
+        $k = if ($minor -band 0x10) { 'keyboard' } elseif ($minor -band 0x20) { 'mouse' } elseif (($minor -band 0x0F) -in 1, 2) { 'controller' } else { 'bluetooth' }
+      }
+    }
+  } catch {}
+  $btKind[$id] = $k; $k
+}
+
+function Read-Devices {
+  $out = @{}
+  # Bluetooth: Windows says exactly what kind of device it is
+  foreach ($pair in @(@($btSel, $false), @($leSel, $true))) {
+    try {
+      foreach ($d in (Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($pair[0])) $devColl)) {
+        if (-not $d.Name) { continue }
+        $k = Kind-FromBluetooth $d.Id $pair[1]
+        # dual-mode devices show up twice (classic + Low Energy); never let a vaguer entry replace a specific one
+        if ($out.ContainsKey('bt:' + $d.Name) -and $k -eq 'bluetooth') { continue }
+        $out['bt:' + $d.Name] = @{ id = 'bt:' + $d.Name; kind = $k; name = $d.Name; via = 'bt' }
+      }
+    } catch {}
+  }
+  # USB: devices present right now, minus everything that is part of the laptop itself (its keyboard, webcam… are USB too)
+  $pnp = Get-CimInstance Win32_PnPEntity -Filter "Present=True AND (PNPClass='Mouse' OR PNPClass='Keyboard' OR PNPClass='WPD' OR PNPClass='MEDIA' OR PNPClass='HIDClass' OR PNPClass='DiskDrive')"
+  foreach ($p in $pnp) {
+    $id = $p.PNPDeviceID
+    if ($id -notmatch '^(USB|HID)\\VID_|^USBSTOR\\|^SWD\\WPDBUSENUM') { continue } # Bluetooth ones are covered above
+    $kind = switch ($p.PNPClass) {
+      'Mouse' { 'mouse' } 'Keyboard' { 'keyboard' } 'DiskDrive' { 'storage' }
+      'WPD' { if ($id -like 'USB\*') { 'phone' } else { 'storage' } }
+      'MEDIA' { 'headphones' }
+      'HIDClass' { if ($p.Name -match 'game controller') { 'controller' } else { $null } }
+    }
+    if (-not $kind) { continue }
+    if (-not $devInfo.ContainsKey($id)) {
+      $c = $null; $n = $null
+      try { $c = "$((Get-PnpDeviceProperty -InstanceId $id -KeyName DEVPKEY_Device_ContainerId).Data)".ToLower() } catch {}
+      try {
+        $parent = (Get-PnpDeviceProperty -InstanceId $id -KeyName DEVPKEY_Device_Parent).Data
+        $n = (Get-PnpDeviceProperty -InstanceId $parent -KeyName DEVPKEY_Device_BusReportedDeviceDesc).Data
+      } catch {}
+      $devInfo[$id] = @{ container = $c; name = $(if ($n) { $n } else { $p.Name }) }
+    }
+    $i = $devInfo[$id]
+    if (-not $i.container -or $i.container -eq $MACHINE) { continue }
+    $key = 'usb:' + $i.container # one icon per physical device; its most specific part decides the icon
+    if (-not $out.ContainsKey($key) -or $RANK[$kind] -lt $RANK[$out[$key].kind]) { $out[$key] = @{ id = $key; kind = $kind; name = $i.name; via = 'usb' } }
+  }
+  $list = @($out.Values | Sort-Object { $_.id })
+  $json = ConvertTo-Json -Compress -Depth 3 -InputObject $list
+  if ($json -eq $script:lastDevices) { return $null }
+  $script:lastDevices = $json
+  @{ type = 'devices'; devices = $list }
+}
+
+# Windows signals every plug/unplug and Bluetooth connect/disconnect; rescan right away instead of waiting for the slow poll
+Register-WmiEvent -Query 'SELECT * FROM Win32_DeviceChangeEvent' -SourceIdentifier devchange | Out-Null
+$tick = 0; $rescan = 0
 while ($true) {
   try { $a = Read-Apps; if ($a) { [Console]::Out.WriteLine(($a | ConvertTo-Json -Compress -Depth 4)) } } catch {}
+  $changed = @(Get-Event -SourceIdentifier devchange -ErrorAction SilentlyContinue)
+  if ($changed.Count) { $changed | Remove-Event; $rescan = 2 } # scan now and once more next loop (Bluetooth status can trail the signal)
+  if ($rescan -gt 0 -or $tick % 10 -eq 0) {
+    if ($rescan -gt 0) { $rescan-- }
+    try { $dv = Read-Devices; if ($dv) { [Console]::Out.WriteLine(($dv | ConvertTo-Json -Compress -Depth 4)) } } catch {}
+  }
+  $tick++
   if ($Parent -and -not (Get-Process -Id $Parent -ErrorAction SilentlyContinue)) { exit } # island closed -> stop
   try { foreach ($f in Read-Notifs) { [Console]::Out.WriteLine(($f | ConvertTo-Json -Compress)) } } catch {}
   $out = @{ type = 'sys'; media = $null; app = $null }

@@ -37,7 +37,7 @@ function token() {
 }
 
 // Media, foreground app and notifications arrive as JSON lines
-let lastApps = [], allIcons = {};
+let lastApps = [], allIcons = {}, lastDevices = null;
 function watchBridge() {
   const p = ps(['-Parent', String(process.pid)]);
   let buf = '';
@@ -52,6 +52,7 @@ function watchBridge() {
       let ev;
       try { ev = JSON.parse(line); } catch { continue; } // skip partial line
       if (ev.type === 'apps') { lastApps = ev.apps; Object.assign(allIcons, ev.icons); } // the bridge sends each icon once; keep them for a rebuilt window
+      if (ev.type === 'devices') lastDevices = ev; // the bridge only sends changes
       send(ev);
     }
   });
@@ -116,6 +117,7 @@ function createWindow() {
   win.once('ready-to-show', () => win.showInactive());
   win.webContents.on('did-finish-load', () => {
     send({ type: 'apps', apps: lastApps, icons: allIcons });
+    if (lastDevices) send(lastDevices);
     for (const p of pending.values()) send(p.ev);
   });
   win.loadURL('app://ui/index.html');

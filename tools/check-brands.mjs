@@ -29,3 +29,11 @@ assert.equal(tab('Some random article - Brave').name, 'Brave');
 // every brand that names a logo got one bundled
 for (const b of BRANDS) if (b.logo) assert.ok(LOGOS[b.name], `logo bundled for ${b.name}`);
 console.log(`brands ok: ${Object.keys(cases).length} titles, ${Object.keys(LOGOS).length} logos`);
+
+// Connected devices: only devices that weren't there before get the "connected" pop-up
+const { newlyConnected } = await import('../ui/devices.js');
+const headphones = { id: 'bt:WH-1000XM4', kind: 'headphones', name: 'WH-1000XM4', via: 'bt' };
+const receiver = { id: 'usb:{5340}', kind: 'mouse', name: 'USB Receiver', via: 'usb' };
+assert.deepEqual(newlyConnected([receiver], [receiver, headphones]), [headphones]);
+assert.deepEqual(newlyConnected([receiver, headphones], [receiver]), []); // disconnecting shows nothing
+console.log('devices ok');

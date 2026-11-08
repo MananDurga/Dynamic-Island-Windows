@@ -1,5 +1,6 @@
 import { resolveApps, iconColor } from './brands.js';
 import { LOGOS } from './logos.js';
+import { deviceIcon, newlyConnected, LABEL } from './devices.js';
 
 const island_ = document.getElementById('island');
 const pill = document.getElementById('pill');
@@ -7,6 +8,7 @@ const content = document.getElementById('content');
 
 const S = { media: null, app: null, weather: null, battery: null, now: new Date(),
   windows: [], icons: {}, apps: [], // open app windows from the bridge -> one entry per app
+  devices: null,         // connected USB/Bluetooth devices; null until the first scan
   sessions: new Map(),   // claude session id -> { cwd }
   approvals: [],         // pending permission requests, oldest first
   toasts: [], toast: null };
@@ -65,11 +67,13 @@ const appIcon = a => `<span class="ai${a.fg ? ' fg' : ''}" style="--c:${a.colors
 const MAX_ICONS = 6;
 
 const W = {
-  apps: {
-    c: () => S.apps.length ? `<span class="apps">${S.apps.slice(0, MAX_ICONS).map(appIcon).join('')}${
-      S.apps.length > MAX_ICONS ? `<span class="more">+${S.apps.length - MAX_ICONS}</span>` : ''}</span>` : '',
-    e: () => `<div class="tile wide"><div class="meta">Open apps</div><div class="chips">${S.apps.length
+  apps: { // open apps, then connected devices after a thin divider
+    c: () => S.apps.length || S.devices?.length ? `<span class="apps">${S.apps.slice(0, MAX_ICONS).map(appIcon).join('')}${
+      S.apps.length > MAX_ICONS ? `<span class="more">+${S.apps.length - MAX_ICONS}</span>` : ''}${
+      S.devices?.length ? `<span class="devsep"></span>${S.devices.map(d => deviceIcon(d)).join('')}` : ''}</span>` : '',
+    e: () => `<div class="tile wide"><div class="meta">Open apps${S.devices?.length ? ' · devices' : ''}</div><div class="chips">${S.apps.length || S.devices?.length
       ? S.apps.map(a => `<span class="chip${a.fg ? ' fg' : ''}" style="--c:${a.colors?.[0] || NEUTRAL}">${appIcon(a)}<span class="ell">${esc(a.name)}</span></span>`).join('')
+        + (S.devices || []).map(d => `<span class="chip" style="--c:#2F80ED">${deviceIcon(d)}<span class="ell">${esc(d.name)}</span></span>`).join('')
       : '<span class="dim">No apps open</span>'}</div></div>` },
   clock: { c: () => `<span class="num">${time()}</span>`,
     e: () => `<div class="tile"><div class="big">${time()}</div><div class="dim">${S.now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}</div></div>` },
@@ -105,7 +109,7 @@ function view() {
   }
   if (S.toast) {
     const n = S.toast;
-    return { cls: 'toast', state: 'notif', html: `<div class="toastbody"><div class="appicon">${esc((n.app || '?')[0])}</div>
+    return { cls: 'toast', state: n.device ? 'device' : 'notif', html: `<div class="toastbody"><div class="appicon">${n.device ? deviceIcon(n.device, true) : esc((n.app || '?')[0])}</div>
       <div class="meta ell">${esc(n.app)}</div><div class="meta">now</div>
       <div class="ell"><b>${esc(n.title)}</b></div><div></div><div class="dim ell">${esc(n.body)}</div></div>` };
   }
@@ -129,6 +133,7 @@ function view() {
 function haloColors(state) {
   if (state === 'approval') return ['#FF8A65'];
   if (state === 'notif') return ['#60A5FA'];
+  if (state === 'device') return ['#2F80ED'];
   const focus = S.apps.find(a => a.fg);
   return focus?.colors || ['#6b2d16'];
 }
@@ -182,6 +187,16 @@ island.onEvent(ev => {
   switch (ev.type) {
     case 'sys': S.media = ev.media; if (ev.app && !/^(electron|island|ember-island)$/i.test(ev.app.name)) S.app = ev.app; setApps(); break;
     case 'apps': S.windows = ev.apps || []; Object.assign(S.icons, ev.icons); setApps(); break;
+    case 'devices': {
+      const now = ev.devices || [];
+      // the first list is what was already plugged in when the island started: no pop-ups for those
+      if (S.devices) for (const d of newlyConnected(S.devices, now)) {
+        S.toasts.push({ device: d, app: d.via === 'bt' ? 'Bluetooth' : 'USB', title: d.name, body: `${LABEL[d.kind] || 'Device'} connected` });
+      }
+      S.devices = now;
+      if (!S.toast && S.toasts.length) { nextToast(); return; }
+      break;
+    }
     case 'notif': S.toasts.push(ev); if (!S.toast) nextToast(); return;
     case 'claude': ev.kind === 'working' ? S.sessions.set(ev.session, { cwd: ev.cwd }) : S.sessions.delete(ev.session); break;
     case 'permission': S.approvals.push(ev); if (S.approvals.length === 1) ting(); break;
