@@ -173,8 +173,12 @@ else app.whenReady().then(() => {
   });
   // Start with Windows via a Startup-folder shortcut: Windows skipped the bare registry entry Electron writes for an unpackaged app
   app.setLoginItemSettings({ openAtLogin: false, path: process.execPath, args: [__dirname] }); // remove the old entry
-  shell.writeShortcutLink(path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Ember Island.lnk'),
+  const programs = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+  shell.writeShortcutLink(path.join(programs, 'Startup', 'Ember Island.lnk'),
     { target: process.execPath, args: `"${__dirname}" --startup`, cwd: __dirname, description: 'Ember Island' });
+  // Start menu entry, so the island can be started by hand without a terminal
+  shell.writeShortcutLink(path.join(programs, 'Ember Island.lnk'),
+    { target: process.execPath, args: `"${__dirname}"`, cwd: __dirname, description: 'Ember Island' });
   if (process.argv.includes('--startup')) {
     // At sign-in Windows' compositor may not be ready, and a transparent window made then stays solid black
     setTimeout(createWindow, 10_000);
